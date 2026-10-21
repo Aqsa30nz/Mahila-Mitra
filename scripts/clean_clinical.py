@@ -22,10 +22,14 @@ REQUIRED_COLUMNS = [
 
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Validate and clean a clinical dataset without modifying the input."""
+    """Validate and clean the clinical dataset without modifying the source."""
 
     df = df.copy()
 
+    # Normalize surrounding whitespace in column names first.
+    df.columns = df.columns.str.strip()
+
+    # Validate required columns.
     missing_columns = [
         column for column in REQUIRED_COLUMNS
         if column not in df.columns
@@ -35,15 +39,49 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             f"Required columns are missing: {missing_columns}"
         )
 
-    # Drop the unnamed column only when it contains no data.
+    # Inspect the unexpected export column before dropping it.
     if "Unnamed: 44" in df.columns:
-        if df["Unnamed: 44"].notna().any():
-            raise ValueError(
-                "'Unnamed: 44' contains data. Inspect it before dropping."
+        extra = df["Unnamed: 44"]
+        non_missing = extra.dropna()
+
+        if not non_missing.empty:
+            print(
+                "Inspecting Unnamed: 44:",
+                non_missing.value_counts(dropna=False).to_dict(),
             )
+
+            # Permit only the verified placeholder and duplicate value.
+            for idx, value in non_missing.items():
+                if isinstance(value, str) and value.strip() == ".":
+                    continue
+
+                # FIX: Do not access a column that may not exist in a test
+                # sample. Without it, the extra value cannot be verified.
+                if "Endometrium (mm)" not in df.columns:
+                    raise ValueError(
+                        "'Unnamed: 44' contains data that cannot be verified."
+                    )
+
+                endometrium = df.loc[idx, "Endometrium (mm)"]
+                numeric_value = pd.to_numeric(
+                    pd.Series([value]), errors="coerce"
+                ).iloc[0]
+
+                if (
+                    pd.notna(endometrium)
+                    and pd.notna(numeric_value)
+                    and numeric_value == endometrium
+                ):
+                    continue
+
+                raise ValueError(
+                    "'Unnamed: 44' contains unexpected data. "
+                    "Inspect it before dropping."
+                )
+
         df = df.drop(columns=["Unnamed: 44"])
 
-    # Remove identifiers from the modelling dataset.
+    # Remove identifier columns from the modelling dataset.
     identifier_columns = ["Sl. No", "Patient File No."]
     df = df.drop(
         columns=[
@@ -52,7 +90,13 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         ]
     )
 
-    # Validate target labels before excluding rows without labels.
+    # Correct the single verified trailing-period typo in the source.
+    beta_hcg_ii = "II    beta-HCG(mIU/mL)"
+    if beta_hcg_ii in df.columns:
+        values = df[beta_hcg_ii].astype("string").str.strip()
+        df[beta_hcg_ii] = values.mask(values.eq("1.99."), "1.99")
+
+    # Validate the target labels before removing rows with missing targets.
     df[TARGET] = pd.to_numeric(df[TARGET], errors="raise")
 
     invalid_labels = (
@@ -75,20 +119,35 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     df[TARGET] = df[TARGET].astype("int64")
 
-    # Convert invalid AMH and blood-pressure entries to missing values.
-    for column in ["AMH(ng/mL)", *BP_COLUMNS]:
-        df[column] = pd.to_numeric(df[column], errors="coerce")
+    # Convert selected clinical measurements to numeric values.
+    # Invalid entries become missing rather than being silently guessed.
+    numeric_columns = [
+        "AMH(ng/mL)",
+        *BP_COLUMNS,
+        beta_hcg_ii,
+    ]
+    for column in numeric_columns:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
 
+    # Flag project-specific suspicious low blood-pressure readings.
     systolic = BP_COLUMNS[0]
     diastolic = BP_COLUMNS[1]
 
     low_systolic = df[systolic].notna() & (df[systolic] < 50)
     low_diastolic = df[diastolic].notna() & (df[diastolic] < 40)
 
-    print("Suspicious low systolic BP readings:", int(low_systolic.sum()))
-    print("Suspicious low diastolic BP readings:", int(low_diastolic.sum()))
+    print(
+        "Suspicious low systolic BP readings:",
+        int(low_systolic.sum()),
+    )
+    print(
+        "Suspicious low diastolic BP readings:",
+        int(low_diastolic.sum()),
+    )
 
-    # Project-specific thresholds, not universal clinical rules.
+    # These are project-specific screening thresholds, not universal
+    # clinical rules. Mark the suspicious measurements as missing.
     df.loc[low_systolic, systolic] = float("nan")
     df.loc[low_diastolic, diastolic] = float("nan")
 
@@ -99,7 +158,7 @@ def main(
     source: Path = SOURCE,
     output: Path = OUTPUT,
 ) -> None:
-    """Read the source workbook, clean it, and save the resulting CSV."""
+    """Read the source workbook, clean it, and save the cleaned CSV."""
 
     source = Path(source)
     output = Path(output)
