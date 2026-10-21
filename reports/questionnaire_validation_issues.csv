@@ -1,0 +1,6 @@
+csv_data_row,column,value,issue
+221,(entire row),Duplicate record,Exact duplicate of an earlier row
+170,Height (in Cm / Feet),51.0,Review: may use feet or may be an incorrect entry
+347,Height (in Cm / Feet),13.46,Review: may use feet or may be an incorrect entry
+444,Height (in Cm / Feet),4.0,Review: may use feet or may be an incorrect entry
+446,Height (in Cm / Feet),4.7,Review: may use feet or may be an incorrect entry
