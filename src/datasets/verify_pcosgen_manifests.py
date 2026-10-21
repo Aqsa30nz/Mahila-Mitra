@@ -46,5 +46,8 @@ assert (check["_merge"] == "both").all()
 assert (check["label_original"] == check["label_processed"]).all()
 assert processed["processed_path"].notna().all()
 assert processed["processed_path"].map(lambda p: Path(p).is_file()).all()
+assert set(train["imagePath"]).isdisjoint(set(validation["imagePath"]))
+assert len(pd.concat([train, validation])) == len(processed)
+assert set(train["imagePath"]) | set(validation["imagePath"]) == set(processed["imagePath"])
 
 print("\nALL MANIFEST CHECKS PASSED")

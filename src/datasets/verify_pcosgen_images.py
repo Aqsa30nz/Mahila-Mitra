@@ -31,3 +31,6 @@ if wrong_dimensions:
 
 if bad:
     print("Unreadable examples:", bad[:3])
+
+if not files or wrong_dimensions or bad:
+    raise SystemExit(1)
