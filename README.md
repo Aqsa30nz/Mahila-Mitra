@@ -1,13 +1,12 @@
-
 # Mahila-Mitra
 
-Mahila-Mitra is an educational research project exploring AI methods and datasets related to polycystic ovary syndrome (PCOS), including clinical data analysis and ovarian ultrasound research.
+Mahila-Mitra is an educational research project exploring AI methods and existing datasets related to polycystic ovary syndrome (PCOS), including clinical data analysis and ovarian ultrasound research.
 
 ## Objectives
 
 - Study three existing datasets and their associated research papers.
 - Reproduce documented preprocessing and feature-extraction methods where the data and documentation permit.
-- Evaluate selected machine-learning methods using appropriate experimental procedures.
+- Explore appropriate machine-learning methods as the project progresses.
 - Compare project-generated results with published findings while clearly distinguishing their sources.
 - Investigate how research findings could inform a future health-support platform.
 
@@ -15,37 +14,42 @@ Mahila-Mitra is an educational research project exploring AI methods and dataset
 
 ### Clinical/tabular data analysis
 
-- Loaded and inspected the clinical PCOS dataset.
-- Created a cleaning script and a cleaned dataset for analysis.
-- Performed exploratory data analysis and generated visualizations.
-- Compared two Random Forest feature sets: clinical/symptom features and all available predictors.
-- Evaluated the models using a held-out test set and five-fold cross-validation.
-- Examined confusion matrices, prediction errors, and feature importance.
-- Saved the experimental model and analysis outputs locally.
+- Developed a clinical data-cleaning script with input validation.
+- Added handling for missing target labels and invalid target values.
+- Removed selected patient-identifier columns from the modelling dataset.
+- Added checks for suspicious blood-pressure readings.
+- Prepared an exploratory data analysis notebook covering target distribution, missing values, feature distributions, and relationships between variables.
+- Added automated tests for clinical data cleaning and validation.
 
-The current experiments use a dataset containing 541 records. The reported test-set results are preliminary and have not been externally validated.
+The clinical dataset contains 541 records according to the project's current documentation. The dataset has not been independently validated in this environment, and the EDA notebook has not been executed locally against the clinical dataset.
+
+### Ultrasound research
+
+The project also includes an ultrasound preprocessing and pilot-training pipeline. Its implementation and tests are maintained in the repository.
 
 ## Project Structure
 
-- `configs/` � configuration files
-- `data/` � dataset storage
-- `notebooks/` � exploratory analysis and experiments
-- `outputs/` � generated plots, metrics, and local model artifacts
-- `reports/` � research summaries and analysis documentation
-- `scripts/` � data-processing scripts
-- `src/` � application and reusable source code
-- `tests/` � project tests
-- `requirements.txt` � Python dependencies
+- `configs/` — Configuration files
+- `data/` — Dataset storage
+- `notebooks/` — Exploratory analysis and experiments
+- `outputs/` — Generated plots, metrics, and local artifacts
+- `reports/` — Research summaries and analysis documentation
+- `scripts/` — Data-processing scripts
+- `src/` — Application and reusable source code
+- `tests/` — Automated project tests
+- `requirements.txt` — Python dependencies
 
 ## Setup
 
 Use Python 3.11 in a virtual environment.
 
+Create the environment:
+
 ```bash
 python -m venv .venv
 ```
 
-Activate the environment in PowerShell:
+Activate it in PowerShell:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -59,19 +63,11 @@ python -m pip install -r requirements.txt
 
 Open the notebooks using VS Code or Jupyter and select the project's virtual-environment kernel.
 
-## Reproducibility
+## Clinical Data-Cleaning Pipeline
 
-- The clinical cleaning script is located at `scripts/clean_clinical.py`.
-- The exploratory analysis and experiments are documented in `notebooks/clinical_eda.ipynb`.
-- Dataset and experiment details are documented in `reports/clinical_pipeline.md`.
-- The research-paper summary is documented in `reports/clinical_paper_summary.md`.
-
-The original datasets must be obtained from their respective sources and placed in the expected local data directories. Raw datasets, processed data, and generated model artifacts are intended to remain outside version control.
-### Run the clinical cleaning pipeline
-
-1. Place the source Excel dataset at `data/raw/clinical/PCOS_data_without_infertility.xlsx`.
-2. Install the project dependencies using `python -m pip install -r requirements.txt`.
-3. Run the cleaning script from the repository root:
+1. Obtain the source Excel dataset and place it at `data/raw/clinical/PCOS_data_without_infertility.xlsx`.
+2. Install the project dependencies.
+3. Run the script from the repository root:
 
    ```bash
    python scripts/clean_clinical.py
@@ -79,11 +75,21 @@ The original datasets must be obtained from their respective sources and placed 
 
 4. The cleaned dataset is saved to `data/processed/clinical_cleaned.csv`.
 
-The script removes selected identifier columns, converts invalid AMH and blood-pressure values to missing values, checks the target labels, and reports the cleaned dataset's shape, missing values, and target distribution. Missing predictor values may remain for downstream handling.
+The script validates required columns and target labels, removes selected identifier columns, converts invalid AMH and blood-pressure entries to missing values, flags suspiciously low blood-pressure readings, and reports the resulting dataset's shape, missing values, and target distribution. Missing predictor values may remain for downstream handling.
+
+## Reproducibility
+
+- Clinical cleaning: `scripts/clean_clinical.py`
+- Clinical exploratory analysis: `notebooks/clinical_eda.ipynb`
+- Clinical pipeline documentation: `reports/clinical_pipeline.md`
+- Research-paper summary: `reports/clinical_paper_summary.md`
+
+The original datasets must be obtained from their respective sources and placed in the expected local directories. Raw datasets, processed datasets, and generated outputs are intended to remain outside version control.
+
 ## Research Integrity and Limitations
 
 This project is for educational and research purposes, not clinical diagnosis.
 
-Experimental metrics reflect the available dataset and evaluation design. They do not establish clinical validity or generalizability. Potential label-definition overlap, dataset size, data quality, and the need for independent external validation must be considered when interpreting results.
+Results depend on dataset quality, sample size, target definitions, and the evaluation methods used. Any future model metrics must be reported with their evaluation methodology and limitations. They do not establish clinical validity or generalizability without appropriate independent validation.
 
-Published results will be distinguished from results obtained in this project.
+Published findings must be distinguished clearly from results generated by this project.
