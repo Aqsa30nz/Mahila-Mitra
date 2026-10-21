@@ -1,53 +1,136 @@
 
 from pathlib import Path
+
 import pandas as pd
 
-source = Path("data/raw/clinical/PCOS_data_without_infertility.xlsx")
-output = Path("data/processed/clinical_cleaned.csv")
-target = "PCOS (Y/N)"
 
-df = pd.read_excel(source, sheet_name="Full_new")
+SOURCE = Path("data/raw/clinical/PCOS_data_without_infertility.xlsx")
+OUTPUT = Path("data/processed/clinical_cleaned.csv")
+SHEET_NAME = "Full_new"
+TARGET = "PCOS (Y/N)"
 
-# Remove identifiers and the mostly empty unnamed column
-df = df.drop(
-    columns=["Sl. No", "Patient File No.", "Unnamed: 44"],
-    errors="ignore",
-)
-
-# Convert invalid AMH values, such as 'a', to missing values
-df["AMH(ng/mL)"] = pd.to_numeric(
-    df["AMH(ng/mL)"], errors="coerce"
-)
-
-# Correct suspicious blood pressure values
-bp_columns = [
+BP_COLUMNS = [
     "BP _Systolic (mmHg)",
     "BP _Diastolic (mmHg)",
 ]
 
-# Convert BP columns to numeric values
-for col in bp_columns:
-    df[col] = pd.to_numeric(df[col], errors="coerce")
+REQUIRED_COLUMNS = [
+    TARGET,
+    "AMH(ng/mL)",
+    *BP_COLUMNS,
+]
 
-# Treat implausibly low BP readings as missing
-df.loc[df["BP _Systolic (mmHg)"] < 50,
-       "BP _Systolic (mmHg)"] = float("nan")
 
-df.loc[df["BP _Diastolic (mmHg)"] < 40,
-       "BP _Diastolic (mmHg)"] = float("nan")
+def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate and clean a clinical dataset without modifying the input."""
 
-# Validate target labels
-df[target] = pd.to_numeric(df[target], errors="raise")
-if not set(df[target].dropna().unique()).issubset({0, 1}):
-    raise ValueError("Unexpected PCOS target values.")
+    df = df.copy()
 
-output.parent.mkdir(parents=True, exist_ok=True)
-df.to_csv(output, index=False)
+    missing_columns = [
+        column for column in REQUIRED_COLUMNS
+        if column not in df.columns
+    ]
+    if missing_columns:
+        raise ValueError(
+            f"Required columns are missing: {missing_columns}"
+        )
 
-print("Cleaning complete!")
-print("Saved to:", output)
-print("Cleaned shape:", df.shape)
-print("\nMissing values:")
-print(df.isna().sum()[df.isna().sum() > 0].to_string())
-print("\nTarget distribution:")
-print(df[target].value_counts().sort_index().to_string())
+    # Drop the unnamed column only when it contains no data.
+    if "Unnamed: 44" in df.columns:
+        if df["Unnamed: 44"].notna().any():
+            raise ValueError(
+                "'Unnamed: 44' contains data. Inspect it before dropping."
+            )
+        df = df.drop(columns=["Unnamed: 44"])
+
+    # Remove identifiers from the modelling dataset.
+    identifier_columns = ["Sl. No", "Patient File No."]
+    df = df.drop(
+        columns=[
+            column for column in identifier_columns
+            if column in df.columns
+        ]
+    )
+
+    # Validate target labels before excluding rows without labels.
+    df[TARGET] = pd.to_numeric(df[TARGET], errors="raise")
+
+    invalid_labels = (
+        df[TARGET].notna()
+        & ~df[TARGET].isin([0, 1])
+    )
+    if invalid_labels.any():
+        values = sorted(
+            df.loc[invalid_labels, TARGET].unique().tolist()
+        )
+        raise ValueError(f"Unexpected PCOS target values: {values}")
+
+    missing_target_rows = int(df[TARGET].isna().sum())
+    if missing_target_rows:
+        print(
+            "Rows excluded because the target label is missing:",
+            missing_target_rows,
+        )
+        df = df.dropna(subset=[TARGET]).copy()
+
+    df[TARGET] = df[TARGET].astype("int64")
+
+    # Convert invalid AMH and blood-pressure entries to missing values.
+    for column in ["AMH(ng/mL)", *BP_COLUMNS]:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    systolic = BP_COLUMNS[0]
+    diastolic = BP_COLUMNS[1]
+
+    low_systolic = df[systolic].notna() & (df[systolic] < 50)
+    low_diastolic = df[diastolic].notna() & (df[diastolic] < 40)
+
+    print("Suspicious low systolic BP readings:", int(low_systolic.sum()))
+    print("Suspicious low diastolic BP readings:", int(low_diastolic.sum()))
+
+    # Project-specific thresholds, not universal clinical rules.
+    df.loc[low_systolic, systolic] = float("nan")
+    df.loc[low_diastolic, diastolic] = float("nan")
+
+    return df
+
+
+def main(
+    source: Path = SOURCE,
+    output: Path = OUTPUT,
+) -> None:
+    """Read the source workbook, clean it, and save the resulting CSV."""
+
+    source = Path(source)
+    output = Path(output)
+
+    if not source.is_file():
+        raise FileNotFoundError(
+            f"Clinical dataset not found: {source.resolve()}"
+        )
+
+    df = pd.read_excel(source, sheet_name=SHEET_NAME)
+    original_rows = len(df)
+
+    cleaned = clean_dataframe(df)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    cleaned.to_csv(output, index=False)
+
+    print("\nClinical preprocessing complete.")
+    print("Input:", source)
+    print("Output:", output)
+    print("Original rows:", original_rows)
+    print("Output rows:", len(cleaned))
+    print("Columns:", len(cleaned.columns))
+
+    print("\nMissing values by column:")
+    missing = cleaned.isna().sum()
+    print(missing[missing > 0].to_string() or "None")
+
+    print("\nPCOS target distribution:")
+    print(cleaned[TARGET].value_counts().sort_index().to_string())
+
+
+if __name__ == "__main__":
+    main()
