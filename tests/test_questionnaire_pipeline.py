@@ -1,29 +1,26 @@
-
 from pathlib import Path
 
 import pandas as pd
 from pandas.testing import assert_frame_equal
-
+from src.preprocessing.demo import format_answer
 from src.preprocessing.questionnaire import clean_questionnaire
 
 
-ROOT = Path(__file__).resolve().parents[1]
-
-RAW_PATH = (
-    ROOT
-    / "data"
-    / "raw"
-    / "questionnaire"
-    / "CLEAN- PCOS SURVEY SPREADSHEET.csv"
-)
-
-PROCESSED_PATH = (
-    ROOT / "data" / "processed" / "questionnaire_cleaned.csv"
-)
+def make_raw_dataset(path: Path) -> pd.DataFrame:
+    """Create messy headers, distinct records, and one exact duplicate."""
+    df = pd.DataFrame(
+        {
+            " Age\n": [21, 22, 23, 21],
+            "Have you been diagnosed with PCOS/PCOD? ": [1, 0, 1, 1],
+            "Weight (kg)": [60, 55, 65, 60],
+        }
+    )
+    df.to_csv(path, index=False)
+    return df
 
 
-def standardize_columns(df):
-    """Normalize line breaks and whitespace in column names."""
+def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply the pipeline's documented header normalization."""
     df = df.copy()
     df.columns = (
         df.columns
@@ -33,107 +30,125 @@ def standardize_columns(df):
     return df
 
 
-def test_raw_dataset_is_unchanged_and_has_expected_shape():
-    raw = pd.read_csv(RAW_PATH)
+def test_raw_dataset_is_unchanged(tmp_path):
+    raw_path = tmp_path / "raw.csv"
+    original = make_raw_dataset(raw_path)
+    original_bytes = raw_path.read_bytes()
 
-    assert raw.shape == (465, 16)
-    assert raw.columns.is_unique
+    output_path = tmp_path / "processed" / "cleaned.csv"
+    clean_questionnaire(raw_path, output_path)
+
+    assert raw_path.read_bytes() == original_bytes
+    assert_frame_equal(
+        pd.read_csv(raw_path),
+        original,
+        check_dtype=False,
+    )
 
 
-def test_cleaned_dataset_has_expected_shape():
-    raw = pd.read_csv(RAW_PATH)
-    cleaned = pd.read_csv(PROCESSED_PATH)
+def test_cleaned_dataset_has_expected_shape_and_headers(tmp_path):
+    raw_path = tmp_path / "raw.csv"
+    make_raw_dataset(raw_path)
 
-    expected_columns = standardize_columns(raw).columns
+    cleaned = clean_questionnaire(raw_path, tmp_path / "cleaned.csv")
 
-    assert cleaned.shape == (464, 16)
-    assert list(cleaned.columns) == list(expected_columns)
+    assert cleaned.shape == (3, 3)
+    assert list(cleaned.columns) == [
+        "Age",
+        "Have you been diagnosed with PCOS/PCOD?",
+        "Weight (kg)",
+    ]
 
 
-def test_preprocessing_removes_exact_duplicates():
-    raw = pd.read_csv(RAW_PATH)
-    cleaned = pd.read_csv(PROCESSED_PATH)
+def test_preprocessing_removes_exact_duplicates(tmp_path):
+    raw_path = tmp_path / "raw.csv"
+    raw = make_raw_dataset(raw_path)
+
+    output_path = tmp_path / "cleaned.csv"
+    actual = clean_questionnaire(raw_path, output_path)
 
     expected = (
         standardize_columns(raw)
         .drop_duplicates()
         .reset_index(drop=True)
     )
-    actual = cleaned.reset_index(drop=True)
 
     assert len(raw) - len(expected) == 1
-
     assert_frame_equal(
-        actual,
+        actual.reset_index(drop=True),
         expected,
         check_dtype=False,
     )
 
 
-def test_cleaned_dataset_has_no_duplicates_or_missing_values():
-    cleaned = pd.read_csv(PROCESSED_PATH)
+def test_cleaned_dataset_has_no_duplicates(tmp_path):
+    raw_path = tmp_path / "raw.csv"
+    make_raw_dataset(raw_path)
+
+    cleaned = clean_questionnaire(raw_path, tmp_path / "cleaned.csv")
 
     assert not cleaned.duplicated().any()
     assert not cleaned.isna().any().any()
 
 
-def test_diagnosis_counts_are_preserved_after_deduplication():
-    raw = pd.read_csv(RAW_PATH)
-    cleaned = pd.read_csv(PROCESSED_PATH)
+def test_diagnosis_counts_are_preserved_after_deduplication(tmp_path):
+    raw_path = tmp_path / "raw.csv"
+    raw = make_raw_dataset(raw_path)
 
-    raw_target = next(
-        c for c in raw.columns
-        if "PCOS/PCOD" in c
-    )
-    cleaned_target = next(
-        c for c in cleaned.columns
-        if "PCOS/PCOD" in c
-    )
+    cleaned = clean_questionnaire(raw_path, tmp_path / "cleaned.csv")
 
-    expected = (
-        raw.drop_duplicates()[raw_target]
+    target = "Have you been diagnosed with PCOS/PCOD?"
+
+    expected_counts = (
+        standardize_columns(raw)
+        .drop_duplicates()[target]
         .value_counts()
         .sort_index()
     )
-    actual = (
-        cleaned[cleaned_target]
-        .value_counts()
-        .sort_index()
-    )
+    actual_counts = cleaned[target].value_counts().sort_index()
 
     assert_frame_equal(
-        actual.to_frame(),
-        expected.to_frame(),
+        actual_counts.to_frame(),
+        expected_counts.to_frame(),
         check_dtype=False,
     )
 
 
-def test_pipeline_generates_expected_cleaned_dataset(tmp_path):
-    output_path = tmp_path / "questionnaire_cleaned.csv"
+def test_pipeline_saves_output_and_creates_parent_directory(tmp_path):
+    raw_path = tmp_path / "raw.csv"
+    make_raw_dataset(raw_path)
 
-    result = clean_questionnaire(RAW_PATH, output_path)
-
-    expected = (
-        standardize_columns(pd.read_csv(RAW_PATH))
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )
+    output_path = tmp_path / "new_directory" / "cleaned.csv"
+    result = clean_questionnaire(raw_path, output_path)
 
     assert output_path.exists()
-    assert result.shape == (464, 16)
-    assert not result.duplicated().any()
-    assert not result.isna().any().any()
-
-    assert_frame_equal(
-        result.reset_index(drop=True),
-        expected,
-        check_dtype=False,
-    )
 
     saved = pd.read_csv(output_path)
-
     assert_frame_equal(
         result.reset_index(drop=True),
         saved.reset_index(drop=True),
         check_dtype=False,
     )
+
+
+def test_pipeline_preserves_distinct_rows_with_same_diagnosis(tmp_path):
+    raw_path = tmp_path / "raw.csv"
+    make_raw_dataset(raw_path)
+
+    cleaned = clean_questionnaire(raw_path, tmp_path / "cleaned.csv")
+
+    target = "Have you been diagnosed with PCOS/PCOD?"
+
+    # Distinct records sharing a diagnosis value must both be retained.
+    assert (cleaned[target] == 1).sum() == 2
+    assert (cleaned[target] == 0).sum() == 1
+
+
+def test_demo_preserves_unverified_binary_codes():
+    question = "Have you been diagnosed with PCOS/PCOD?"
+
+    assert format_answer(question, 0) == "0"
+    assert format_answer(question, 1) == "1"
+    assert format_answer(question, 0.0) == "0"
+    assert format_answer(question, 1.0) == "1"
+    assert format_answer(question, float("nan")) == "Not provided"

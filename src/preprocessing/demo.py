@@ -33,10 +33,8 @@ def format_answer(question, answer):
     if question in BINARY_COLUMNS:
         try:
             value = float(answer)
-            if value == 0:
-                return "No"
-            if value == 1:
-                return "Yes"
+            if value in (0, 1):
+                return str(int(value))
         except (ValueError, TypeError):
             pass
 
